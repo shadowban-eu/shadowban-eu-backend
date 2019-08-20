@@ -70,9 +70,9 @@ class TwitterSession:
             async with self._session.post('https://twitter.com/sessions', data=form_data, headers=self._headers) as r:
                 await r.text()
                 if str(r.url) == "https://twitter.com/":
-                    print("Login of %s successful" % username)
+                    log("Login of %s successful" % username)
                 else:
-                    print("Error logging in %s" % username)
+                    log("Error logging in %s" % username)
             self.set_csrf_header()
             self.username = username
         else:
@@ -187,7 +187,8 @@ class TwitterSession:
                         obj["ban"] = True
                     return obj
         except:
-            print(traceback.format_exc())
+            debug('Unexpected Exception:')
+            debug(traceback.format_exc())
 
     async def test_barrier(self, user_id):
         try:
