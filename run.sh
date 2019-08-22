@@ -1,3 +1,5 @@
+#/usr/bin/env bash
+
 if [ "$PYTHON_ENV" != 'production' ] && [ "$PYTHON_ENV" != 'development' ]; then
   echo "Please provide a PYTHON_ENV value of 'production' or 'development'"
   echo "e.g. $ PYTHON_ENV=development $0"
