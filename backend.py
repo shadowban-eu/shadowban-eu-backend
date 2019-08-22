@@ -1,3 +1,4 @@
+import os
 import aiohttp
 import argparse
 import asyncio
@@ -412,6 +413,10 @@ db = connect(host=args.mongo_host, port=args.mongo_port)
 
 with open(args.account_file, "r") as f:
     accounts = json.loads(f.read())
+
+if os.path.isdir('./logs') is False:
+    print('Creating ./logs directory')
+    os.mkdir('./logs')
 
 if args.log is not None:
     print("Logging test results to %s", args.log)
