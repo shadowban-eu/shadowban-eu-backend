@@ -117,7 +117,7 @@ class TwitterSession:
             result = await r.json()
             # debug('Tweet request ' + tweet_id + ':\n' + str(r) + '\n\n' + json.dumps(result) + '\n\n\n')
             self.set_csrf_header()
-            if self.screen_name is not None:
+            if self.username is not None:
                 self.monitor_rate_limit(r.headers)
             if retry_csrf and isinstance(result.get("errors", None), list) and len([x for x in result["errors"] if x.get("code", None) == 353]):
                 return await self.tweet_raw(tweet_id, count, cursor, False)
@@ -133,13 +133,13 @@ class TwitterSession:
 
         # rate limit reset
         if last_remaining < self.remaining and self.overshot > 0:
-            log('[rate-limit] Reset detected for ' + self.screen_name + '. Saving overshoot count...')
-            db.write_rate_limit({ 'screen_name': self.screen_name, 'overshot': self.overshot })
+            log('[rate-limit] Reset detected for ' + self.username + '. Saving overshoot count...')
+            db.write_rate_limit({ 'screen_name': self.username, 'overshot': self.overshot })
             self.overshot = 0
 
         # count the requests that failed because of rate limiting
         if self.remaining is 0:
-            log('[rate-limit] Limit hit by ' + self.screen_name + '.')
+            log('[rate-limit] Limit hit by ' + self.username + '.')
             self.overshot += 1
 
     @classmethod
