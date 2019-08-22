@@ -406,7 +406,6 @@ parser.add_argument('--port', type=int, default=8080, help='port which to listen
 parser.add_argument('--mongo-host', type=str, default='localhost', help='hostname or IP of mongoDB service to connect to')
 parser.add_argument('--mongo-port', type=int, default=27017, help='port of mongoDB service to connect to')
 parser.add_argument('--mongo-db', type=str, default='tester', help='name of mongo database to use')
-parser.add_argument('--mongo-collection', type=str, default='results', help='name of collection to save test results to')
 args = parser.parse_args()
 
 db = connect(host=args.mongo_host, port=args.mongo_port)
