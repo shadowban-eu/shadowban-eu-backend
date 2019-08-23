@@ -1,8 +1,9 @@
-import os
 import aiohttp
 import argparse
 import asyncio
+import daemon
 import json
+import os
 import re
 import traceback
 import urllib.parse
@@ -56,26 +57,45 @@ class TwitterSession:
             if cookie.key == 'ct0':
                 self._headers['X-Csrf-Token'] = cookie.value
 
-    async def login(self, username = None, password = None, email = None):
+    async def login(self, username = None, password = None, email = None, cookie_dir=None):
         self._session = aiohttp.ClientSession()
 
         if password is not None:
-            async with self._session.get("https://twitter.com/login", headers=self._headers) as r:
-                login_page = await r.text()
-            form_data = {}
-            soup = BeautifulSoup(login_page, 'html.parser')
-            form_data["authenticity_token"] = soup.find('input', {'name': 'authenticity_token'}).get('value')
-            form_data["session[username_or_email]"] = email
-            form_data["session[password]"] = password
-            form_data["remember_me"] = "1"
-            async with self._session.post('https://twitter.com/sessions', data=form_data, headers=self._headers) as r:
-                await r.text()
-                if str(r.url) == "https://twitter.com/":
-                    log("Login of %s successful" % username)
-                else:
-                    log("Error logging in %s" % username)
+            login_required = True
+            cookie_file = None
+            if cookie_dir is not None:
+                cookie_file = os.path.join(cookie_dir, username)
+                if os.path.isfile(cookie_file):
+                    log("Use cookie file for %s" % username)
+                    self._session.cookie_jar.load(cookie_file)
+                    login_required = False
+
+            if login_required:
+                async with self._session.get("https://twitter.com/login", headers=self._headers) as r:
+                    login_page = await r.text()
+                form_data = {}
+                soup = BeautifulSoup(login_page, 'html.parser')
+                form_data["authenticity_token"] = soup.find('input', {'name': 'authenticity_token'}).get('value')
+                form_data["session[username_or_email]"] = email
+                form_data["session[password]"] = password
+                form_data["remember_me"] = "1"
+                async with self._session.post('https://twitter.com/sessions', data=form_data, headers=self._headers) as r:
+                    await r.text()
+                    if str(r.url) == "https://twitter.com/":
+                        log("Login of %s successful" % username)
+                    else:
+                        log("Error logging in %s" % username)
+            else:
+                async with self._session.get('https://twitter.com', headers=self._headers) as r:
+                    await r.text()
+
             self.set_csrf_header()
+
             self.username = username
+
+            if cookie_file is not None:
+                self._session.cookie_jar.save(cookie_file)
+
         else:
             self._headers['Authorization'] = 'Bearer ' + self._auth
             async with self._session.post("https://api.twitter.com/1.1/guest/activate.json", headers=self._headers) as r:
@@ -115,7 +135,7 @@ class TwitterSession:
             cursor = "&cursor=" + urllib.parse.quote(cursor)
         async with self._session.get("https://api.twitter.com/2/timeline/conversation/" + tweet_id + ".json?include_reply_count=1&send_error_codes=true&count="+str(count)+ cursor, headers=self._headers) as r:
             result = await r.json()
-            # debug('Tweet request ' + tweet_id + ':\n' + str(r) + '\n\n' + json.dumps(result) + '\n\n\n')
+            debug('Tweet request ' + tweet_id + ':\n' + str(r) + '\n\n' + json.dumps(result) + '\n\n\n')
             self.set_csrf_header()
             if self.username is not None:
                 self.monitor_rate_limit(r.headers)
@@ -390,18 +410,22 @@ async def hello(request):
     await session.close()
     return web.json_response(result)
 
-async def login_accounts(accounts):
+async def login_accounts(accounts, cookie_dir=None):
+    if cookie_dir is not None and not os.path.isdir(cookie_dir):
+        os.mkdir(cookie_dir, 0o700)
     coroutines = []
     for acc in accounts:
         session = TwitterSession()
-        coroutines.append(session.login(*acc))
+        coroutines.append(session.login(*acc, cookie_dir=cookie_dir))
         account_sessions.append(session)
     await asyncio.gather(*coroutines)
 
 
 parser = argparse.ArgumentParser(description='Twitter Shadowban Tester')
 parser.add_argument('--account-file', type=str, default='.htaccounts', help='json file with reference account credentials')
+parser.add_argument('--cookie-dir', type=str, default=None, help='directory for session account storage')
 parser.add_argument('--log', type=str, default=None, help='log file where test results are written to')
+parser.add_argument('--daemon', action='store_true', help='run in background')
 parser.add_argument('--debug', type=str, default=None, help='debug log file')
 parser.add_argument('--port', type=int, default=8080, help='port which to listen on')
 parser.add_argument('--mongo-host', type=str, default='localhost', help='hostname or IP of mongoDB service to connect to')
@@ -426,9 +450,15 @@ if args.debug is not None:
     print("Logging debug output to %s", args.debug)
     debug_file = open(args.debug, "a")
 
+def run():
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(login_accounts(accounts, args.cookie_dir))
+    app = web.Application()
+    app.add_routes(routes)
+    web.run_app(app, host='127.0.0.1', port=args.port)
 
-loop = asyncio.get_event_loop()
-loop.run_until_complete(login_accounts(accounts))
-app = web.Application()
-app.add_routes(routes)
-web.run_app(app, host='127.0.0.1', port=args.port)
+if args.daemon:
+    with daemon.DaemonContext():
+        run()
+else:
+    run()

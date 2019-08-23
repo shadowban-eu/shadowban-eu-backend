@@ -17,6 +17,7 @@ source $EXPECTED_ENV_FILE
 echo "Starting server..."
 python3 ./backend.py \
   --account-file $ACCOUNT_FILE \
+  --cookie-dir $COOKIE_DIR \
   --log $LOG_FILE \
   --debug $DEBUG_FILE \
   --port "$PORT" \
