@@ -399,7 +399,7 @@ class TwitterSession:
         if more_replies_test and not get_nested(result, ["tests", "ghost", "ban"], False):
             result["tests"]["more_replies"] = await self.test_barrier(user_id)
 
-        debug('Writing result for ' + result['profile']['screen_name'] + ' to DB');
+        debug('Writing result for ' + result['profile']['screen_name'] + ' to DB')
         db.write_result(result)
         return result
 
@@ -516,6 +516,7 @@ if args.debug is not None:
     debug_file = open(args.debug, "a")
 
 def run():
+    global db
     db = connect(host=args.mongo_host, port=args.mongo_port)
     loop = asyncio.get_event_loop()
     loop.run_until_complete(login_accounts(accounts, args.cookie_dir))
