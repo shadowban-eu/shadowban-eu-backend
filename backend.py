@@ -452,6 +452,10 @@ async def login_accounts(accounts, cookie_dir=None):
         account_sessions.append(session)
     await asyncio.gather(*coroutines)
 
+def ensure_dir(path):
+    if os.path.isdir(path) is False:
+        print('Creating directory %s' % path)
+        os.mkdir(path)
 
 parser = argparse.ArgumentParser(description='Twitter Shadowban Tester')
 parser.add_argument('--account-file', type=str, default='.htaccounts', help='json file with reference account credentials')
@@ -465,24 +469,25 @@ parser.add_argument('--mongo-port', type=int, default=27017, help='port of mongo
 parser.add_argument('--mongo-db', type=str, default='tester', help='name of mongo database to use')
 args = parser.parse_args()
 
-db = connect(host=args.mongo_host, port=args.mongo_port)
+ensure_dir(args.cookie_dir)
 
 with open(args.account_file, "r") as f:
     accounts = json.loads(f.read())
 
-if os.path.isdir('./logs') is False:
-    print('Creating ./logs directory')
-    os.mkdir('./logs')
-
 if args.log is not None:
-    print("Logging test results to %s", args.log)
+    print("Logging test results to %s" % args.log)
+    log_dir = os.path.dirname(args.log)
+    ensure_dir(log_dir)
     log_file = open(args.log, "a")
 
 if args.debug is not None:
-    print("Logging debug output to %s", args.debug)
+    print("Logging debug output to %s" % args.debug)
+    debug_dir = os.path.dirname(args.debug)
+    ensure_dir(debug_dir)
     debug_file = open(args.debug, "a")
 
 def run():
+    db = connect(host=args.mongo_host, port=args.mongo_port)
     loop = asyncio.get_event_loop()
     loop.run_until_complete(login_accounts(accounts, args.cookie_dir))
     app = web.Application()
