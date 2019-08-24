@@ -22,10 +22,18 @@ def get_nested(obj, path, default=None):
         obj = obj[p]
     return obj
 
+def is_error(result, code):
+    return isinstance(result.get("errors", None), list) and len([x for x in result["errors"] if x.get("code", None) == code]) > 0
+
 account_sessions = []
 account_index = 0
 log_file = None
 debug_file = None
+
+def next_session():
+    sessions = sorted([s for s in account_sessions if not s.locked], key=lambda s:-s.remaining)
+    if len(sessions) > 0:
+        return sessions[0]
 
 class TwitterSession:
     _auth = "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
@@ -43,9 +51,10 @@ class TwitterSession:
 
         # rate limit monitoring
         self.limit = -1
-        self.remaining = -1
+        self.remaining = 180
         self.reset = -1
         self.overshot = -1
+        self.locked = False
 
         # session user's @username
         # this stays `None` for guest sessions
@@ -70,6 +79,8 @@ class TwitterSession:
                     self._session.cookie_jar.load(cookie_file)
                     login_required = False
 
+            store_cookies = True
+
             if login_required:
                 async with self._session.get("https://twitter.com/login", headers=self._headers) as r:
                     login_page = await r.text()
@@ -80,11 +91,13 @@ class TwitterSession:
                 form_data["session[password]"] = password
                 form_data["remember_me"] = "1"
                 async with self._session.post('https://twitter.com/sessions', data=form_data, headers=self._headers) as r:
-                    await r.text()
+                    response = await r.text()
                     if str(r.url) == "https://twitter.com/":
                         log("Login of %s successful" % username)
                     else:
-                        log("Error logging in %s" % username)
+                        store_cookies = False
+                        log("Error logging in %s (%s)" % (username, r.url))
+                        debug("ERROR PAGE\n" + response)
             else:
                 async with self._session.get('https://twitter.com', headers=self._headers) as r:
                     await r.text()
@@ -93,7 +106,7 @@ class TwitterSession:
 
             self.username = username
 
-            if cookie_file is not None:
+            if cookie_file is not None and store_cookies:
                 self._session.cookie_jar.save(cookie_file)
 
         else:
@@ -139,8 +152,10 @@ class TwitterSession:
             self.set_csrf_header()
             if self.username is not None:
                 self.monitor_rate_limit(r.headers)
-            if retry_csrf and isinstance(result.get("errors", None), list) and len([x for x in result["errors"] if x.get("code", None) == 353]):
+            if retry_csrf and is_error(result, 353):
                 return await self.tweet_raw(tweet_id, count, cursor, False)
+            if is_error(result, 326):
+                self.locked = True
             return result
 
     def monitor_rate_limit(self, headers):
@@ -253,7 +268,10 @@ class TwitterSession:
 
                 global account_sessions
                 global account_index
-                reference_session = account_sessions[account_index % len(account_sessions)]
+                reference_session = next_session()
+                if reference_session is None:
+                    return
+
                 account_index += 1
 
                 before_barrier = await reference_session.tweet_raw(replied_to_id, 1000)
@@ -396,14 +414,28 @@ def log(message):
     else:
         print(message)
 
-@routes.get('/{screen_name}')
-async def hello(request):
+@routes.get('/.stats')
+async def stats(request):
+    text = "Locked Limit Remaining Reset"
+    for session in account_sessions:
+        text += "\n%6d %5d %9d %5d" % (int(session.locked), session.limit, session.remaining, session.reset - int(time.time()))
+    return web.Response(text=text)
+
+@routes.get('/.unlocked/{screen_name}')
+async def unlocked(request):
     screen_name = request.match_info['screen_name']
-    if screen_name == '.stats':
-        text = "Limit Remaining Reset"
-        for session in account_sessions:
-            text += "\n%5d %9d %5d" % (session.limit, session.remaining, session.reset - int(time.time()))
-        return web.Response(text=text)
+    text = "Not unlocked"
+    for session in account_sessions:
+        if session.username.lower() != screen_name.lower():
+            continue
+        session.locked = False
+        text = "Unlocked"
+    return web.Response(text=text)
+
+
+@routes.get('/{screen_name}')
+async def api(request):
+    screen_name = request.match_info['screen_name']
     session = TwitterSession()
     result = await session.test(screen_name)
     log(json.dumps(result) + '\n')
