@@ -139,20 +139,16 @@ class TwitterSession:
 
     async def get(self, url, retries=0):
         self.set_csrf_header()
-        try:
-            async with self._session.get(url, headers=self._headers) as r:
-                result = await r.json()
-            self.monitor_rate_limit(r.headers)
-            if self.username is None and self.remaining < 10 or is_error(result, 88):
-                await self.login_guest()
-            if retries > 0 and is_error(result, 353):
-                return await self.get(url, retries - 1)
-            if is_error(result, 326):
-                self.locked = True
-            return result
-        except DisconnectedError:
-            if self.username is None:
-                self.login_guest()
+        async with self._session.get(url, headers=self._headers) as r:
+            result = await r.json()
+        self.monitor_rate_limit(r.headers)
+        if self.username is None and self.remaining < 10 or is_error(result, 88):
+            await self.login_guest()
+        if retries > 0 and is_error(result, 353):
+            return await self.get(url, retries - 1)
+        if is_error(result, 326):
+            self.locked = True
+        return result
 
     async def search_raw(self, query, live=True):
         additional_query = ""
@@ -180,10 +176,15 @@ class TwitterSession:
     def monitor_rate_limit(self, headers):
         # store last remaining count for reset detection
         last_remaining = self.remaining
-
-        self.limit = int(headers.get('x-rate-limit-limit', -1))
-        self.remaining = int(headers.get('x-rate-limit-remaining', -1))
-        self.reset = int(headers.get('x-rate-limit-reset', -1))
+        limit = headers.get('x-rate-limit-limit', None)
+        remaining = headers.get('x-rate-limit-remaining', None)
+        reset = headers.get('x-rate-limit-reset', None)
+        if limit is not None:
+            self.limit = int(limit)
+        if remaining is not None:
+            self.remaining = int(remaining)
+        if reset is not None:
+            self.reset = int(reset)
 
         # rate limit reset
         if last_remaining < self.remaining and self.overshot > 0 and self.username is not None:
