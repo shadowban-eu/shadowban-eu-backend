@@ -13,6 +13,8 @@ from aiohttp import web
 from bs4 import BeautifulSoup
 from db import connect
 
+twitter_auth_key = "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
+
 routes = web.RouteTableDef()
 
 def get_nested(obj, path, default=None):
@@ -22,13 +24,16 @@ def get_nested(obj, path, default=None):
         obj = obj[p]
     return obj
 
-def is_error(result, code):
-    return isinstance(result.get("errors", None), list) and len([x for x in result["errors"] if x.get("code", None) == code]) > 0
+def is_error(result, code=None):
+    return isinstance(result.get("errors", None), list) and (len([x for x in result["errors"] if x.get("code", None) == code]) > 0 or code is None and len(result["errors"] > 0))
 
 account_sessions = []
 account_index = 0
 log_file = None
 debug_file = None
+guest_session_pool_size = 10
+guest_sessions = []
+test_index = 0
 
 def next_session():
     sessions = sorted([s for s in account_sessions if not s.locked], key=lambda s:-s.remaining)
@@ -36,7 +41,6 @@ def next_session():
         return sessions[0]
 
 class TwitterSession:
-    _auth = "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
     _user_url = "https://api.twitter.com/graphql/SEn6Mq-OakvVOT1CJqUO2A/UserByScreenName?variables="
     def __init__(self):
         self._headers = {
@@ -65,6 +69,26 @@ class TwitterSession:
         for key, cookie in cookies.items():
             if cookie.key == 'ct0':
                 self._headers['X-Csrf-Token'] = cookie.value
+
+    async def get_guest_token(self):
+        self._headers['Authorization'] = 'Bearer ' + twitter_auth_key
+        async with self._session.post("https://api.twitter.com/1.1/guest/activate.json", headers=self._headers) as r:
+            response = await r.json()
+        guest_token = response.get("guest_token", None)
+        if guest_token is None:
+            debug("Failed to fetch guest token")
+        return guest_token
+
+    async def login_guest(self):
+        if self._session is not None:
+            await self._session.close()
+        self._session = aiohttp.ClientSession()
+        self.set_csrf_header()
+        old_token = self._guest_token
+        new_token = await self.get_guest_token()
+        self._guest_token = new_token if new_token is not None else old_token
+        self._headers['X-Guest-Token'] = self._guest_token
+
 
     async def login(self, username = None, password = None, email = None, cookie_dir=None):
         self._session = aiohttp.ClientSession()
@@ -101,62 +125,57 @@ class TwitterSession:
             else:
                 async with self._session.get('https://twitter.com', headers=self._headers) as r:
                     await r.text()
-
+            
             self.set_csrf_header()
-
             self.username = username
 
             if cookie_file is not None and store_cookies:
                 self._session.cookie_jar.save(cookie_file)
 
         else:
-            self._headers['Authorization'] = 'Bearer ' + self._auth
-            async with self._session.post("https://api.twitter.com/1.1/guest/activate.json", headers=self._headers) as r:
-                guest_token = await r.json()
-            self._guest_token = guest_token["guest_token"]
-            self._headers['X-Guest-Token'] = self._guest_token
+            await self.login_guest()
 
-        self._headers['Authorization'] = 'Bearer ' + self._auth
+        self._headers['Authorization'] = 'Bearer ' + twitter_auth_key
+
+    async def get(self, url, retries=0):
+        self.set_csrf_header()
+        try:
+            async with self._session.get(url, headers=self._headers) as r:
+                result = await r.json()
+            self.monitor_rate_limit(r.headers)
+            if self.username is None and self.remaining < 10 or is_error(result, 88):
+                await self.login_guest()
+            if retries > 0 and is_error(result, 353):
+                return await self.get(url, retries - 1)
+            if is_error(result, 326):
+                self.locked = True
+            return result
+        except DisconnectedError:
+            if self.username is None:
+                self.login_guest()
 
     async def search_raw(self, query, live=True):
         additional_query = ""
         if live:
             additional_query = "&tweet_search_mode=live"
-        async with self._session.get("https://api.twitter.com/2/search/adaptive.json?include_profile_interstitial_type=1&include_blocking=1&include_blocked_by=1&include_followed_by=1&include_want_retweets=1&include_mute_edge=1&include_can_dm=1&include_can_media_tag=1&skip_status=1&cards_platform=Web-12&include_cards=1&include_composer_source=true&include_ext_alt_text=true&include_reply_count=1&tweet_mode=extended&include_entities=true&include_user_entities=true&include_ext_media_color=true&include_ext_media_availability=true&send_error_codes=true&q="+urllib.parse.quote(query)+"&qf_abuse=false&count=20&query_source=typed_query&pc=1&spelling_corrections=0&ext=mediaStats%2ChighlightedLabel%2CcameraMoment" + additional_query, headers=self._headers) as r:
-            return await r.json()
+        return await self.get("https://api.twitter.com/2/search/adaptive.json?q="+urllib.parse.quote(query)+"&count=20&spelling_corrections=0" + additional_query)
 
     async def typeahead_raw(self, query):
-        async with self._session.get("https://api.twitter.com/1.1/search/typeahead.json?src=search_box&result_type=users&q=" + urllib.parse.quote(query), headers=self._headers) as r:
-            return await r.json()
+        return await self.get("https://api.twitter.com/1.1/search/typeahead.json?src=search_box&result_type=users&q=" + urllib.parse.quote(query))
 
     async def profile_raw(self, username):
         obj = json.dumps({"screen_name": username, "withHighlightedLabel": True})
-        async with self._session.get(self._user_url + urllib.parse.quote(obj), headers=self._headers) as r:
-            return await r.json()
+        return await self.get(self._user_url + urllib.parse.quote(obj))
 
     async def get_profile_tweets_raw(self, user_id):
-        async with self._session.get("https://api.twitter.com/2/timeline/profile/" + str(user_id) +".json?include_tweet_replies=1&include_want_retweets=0&include_reply_count=1&count=1000", headers=self._headers) as r:
-            return await r.json()
-
-    async def test_detached_tweets():
-        pass
+        return await self.get("https://api.twitter.com/2/timeline/profile/" + str(user_id) +".json?include_tweet_replies=1&include_want_retweets=0&include_reply_count=1&count=1000")
 
     async def tweet_raw(self, tweet_id, count=20, cursor=None, retry_csrf=True):
         if cursor is None:
             cursor = ""
         else:
             cursor = "&cursor=" + urllib.parse.quote(cursor)
-        async with self._session.get("https://api.twitter.com/2/timeline/conversation/" + tweet_id + ".json?include_reply_count=1&send_error_codes=true&count="+str(count)+ cursor, headers=self._headers) as r:
-            result = await r.json()
-            debug('Tweet request ' + tweet_id + ':\n' + str(r) + '\n\n' + json.dumps(result) + '\n\n\n')
-            self.set_csrf_header()
-            if self.username is not None:
-                self.monitor_rate_limit(r.headers)
-            if retry_csrf and is_error(result, 353):
-                return await self.tweet_raw(tweet_id, count, cursor, False)
-            if is_error(result, 326):
-                self.locked = True
-            return result
+        return await self.get("https://api.twitter.com/2/timeline/conversation/" + tweet_id + ".json?include_reply_count=1&send_error_codes=true&count="+str(count)+ cursor)
 
     def monitor_rate_limit(self, headers):
         # store last remaining count for reset detection
@@ -167,14 +186,14 @@ class TwitterSession:
         self.reset = int(headers.get('x-rate-limit-reset', -1))
 
         # rate limit reset
-        if last_remaining < self.remaining and self.overshot > 0:
+        if last_remaining < self.remaining and self.overshot > 0 and self.username is not None:
             log('[rate-limit] Reset detected for ' + self.username + '. Saving overshoot count...')
             db.write_rate_limit({ 'screen_name': self.username, 'overshot': self.overshot })
             self.overshot = 0
 
         # count the requests that failed because of rate limiting
         if self.remaining is 0:
-            log('[rate-limit] Limit hit by ' + self.username + '.')
+            log('[rate-limit] Limit hit by ' + str(self.username) + '.')
             self.overshot += 1
 
     @classmethod
@@ -266,12 +285,11 @@ class TwitterSession:
                 debug('Found:' + tid + '\n')
                 debug('In reply to:' + replied_to_id + '\n')
 
-                global account_sessions
-                global account_index
                 reference_session = next_session()
                 if reference_session is None:
                     return
-
+                
+                global account_index
                 account_index += 1
 
                 before_barrier = await reference_session.tweet_raw(replied_to_id, 1000)
@@ -311,7 +329,6 @@ class TwitterSession:
             debug(traceback.format_exc())
 
     async def test(self, username, more_replies_test=True):
-        await self.login()
         result = {"timestamp": time.time()}
         profile = {}
         profile_raw = await self.profile_raw(username)
@@ -383,7 +400,6 @@ class TwitterSession:
             result["tests"]["more_replies"] = await self.test_barrier(user_id)
 
         debug('Writing result for ' + result['profile']['screen_name'] + ' to DB');
-        global db
         db.write_result(result)
         return result
 
@@ -392,7 +408,6 @@ class TwitterSession:
         await self._session.close()
 
 def debug(message):
-    global debug_file
     if message.endswith('\n') is False:
         message = message + '\n'
 
@@ -403,7 +418,6 @@ def debug(message):
         print(message)
 
 def log(message):
-    global log_file
     # ensure newline
     if message.endswith('\n') is False:
          message = message + '\n'
@@ -414,11 +428,18 @@ def log(message):
     else:
         print(message)
 
+def print_session_info(sessions):
+    text = ""
+    for session in sessions:
+        text += "\n%6d %5d %9d %5d" % (int(session.locked), session.limit, session.remaining, session.reset - int(time.time()))
+    return text
+
 @routes.get('/.stats')
 async def stats(request):
-    text = "Locked Limit Remaining Reset"
-    for session in account_sessions:
-        text += "\n%6d %5d %9d %5d" % (int(session.locked), session.limit, session.remaining, session.reset - int(time.time()))
+    text = "--- GUEST SESSIONS ---\n\nLocked Limit Remaining Reset"
+    text += print_session_info(guest_sessions)
+    text += "\n\n\n--- ACCOUNTS ---\n\nLocked Limit Remaining Reset"
+    text += print_session_info(account_sessions)
     return web.Response(text=text)
 
 @routes.get('/.unlocked/{screen_name}')
@@ -435,11 +456,12 @@ async def unlocked(request):
 
 @routes.get('/{screen_name}')
 async def api(request):
+    global test_index
     screen_name = request.match_info['screen_name']
-    session = TwitterSession()
+    session = guest_sessions[test_index % len(guest_sessions)]
+    test_index += 1
     result = await session.test(screen_name)
     log(json.dumps(result) + '\n')
-    await session.close()
     return web.json_response(result)
 
 async def login_accounts(accounts, cookie_dir=None):
@@ -451,6 +473,13 @@ async def login_accounts(accounts, cookie_dir=None):
         coroutines.append(session.login(*acc, cookie_dir=cookie_dir))
         account_sessions.append(session)
     await asyncio.gather(*coroutines)
+
+async def login_guests():
+    for i in range(0, guest_session_pool_size):
+        session = TwitterSession()
+        guest_sessions.append(session)
+    await asyncio.gather(*[s.login() for s in guest_sessions])
+    log("Guest sessions created")
 
 
 parser = argparse.ArgumentParser(description='Twitter Shadowban Tester')
@@ -485,6 +514,7 @@ if args.debug is not None:
 def run():
     loop = asyncio.get_event_loop()
     loop.run_until_complete(login_accounts(accounts, args.cookie_dir))
+    loop.run_until_complete(login_guests())
     app = web.Application()
     app.add_routes(routes)
     web.run_app(app, host='127.0.0.1', port=args.port)
