@@ -1,3 +1,4 @@
 aiohttp
 pymongo
 bs4
+daemon
