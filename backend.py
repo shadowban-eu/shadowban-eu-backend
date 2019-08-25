@@ -42,7 +42,12 @@ guest_sessions = []
 test_index = 0
 
 def next_session():
-    sessions = sorted([s for s in account_sessions if not s.locked], key=lambda s:-s.remaining)
+    def key(s):
+        remaining_time = s.reset - time.time()
+        if s.remaining <= 3 and remaining_time > 0:
+            return 900
+        return remaining_time
+    sessions = sorted([s for s in account_sessions if not s.locked], key=key)
     if len(sessions) > 0:
         return sessions[0]
 
