@@ -17,6 +17,9 @@ twitter_auth_key = "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%
 
 routes = web.RouteTableDef()
 
+class UnexpectedApiError(Exception):
+    pass
+
 def get_nested(obj, path, default=None):
     for p in path:
         if obj is None or not p in obj:
@@ -26,6 +29,9 @@ def get_nested(obj, path, default=None):
 
 def is_error(result, code=None):
     return isinstance(result.get("errors", None), list) and (len([x for x in result["errors"] if x.get("code", None) == code]) > 0 or code is None and len(result["errors"] > 0))
+
+def is_another_error(result, codes):
+    return isinstance(result.get("errors", None), list) and len([x for x in result["errors"] if x.get("code", None) not in codes]) > 0
 
 account_sessions = []
 account_index = 0
@@ -59,6 +65,7 @@ class TwitterSession:
         self.reset = -1
         self.overshot = -1
         self.locked = False
+        self.next_refresh = None
 
         # session user's @username
         # this stays `None` for guest sessions
@@ -79,14 +86,32 @@ class TwitterSession:
             debug("Failed to fetch guest token")
         return guest_token
 
-    async def login_guest(self):
-        if self._session is not None:
-            await self._session.close()
+    async def renew_session(self):
+        await self.try_close()
         self._session = aiohttp.ClientSession()
+
+    async def refresh_old_token(self):
+        if self.username is not None or self.next_refresh is None or time.time() < self.next_refresh:
+            return
+        debug("Refresh token: " + str(self._guest_token))
+        await self.login_guest()
+        debug("New token: " + str(self._guest_token))
+
+    async def try_close(self):
+        if self._session is not None:
+            try:
+                await self._session.close()
+            except:
+                pass
+
+    async def login_guest(self):
+        await self.renew_session()
         self.set_csrf_header()
         old_token = self._guest_token
         new_token = await self.get_guest_token()
         self._guest_token = new_token if new_token is not None else old_token
+        if new_token is not None:
+            self.next_refresh = time.time() + 3600
         self._headers['X-Guest-Token'] = self._guest_token
 
 
@@ -139,10 +164,17 @@ class TwitterSession:
 
     async def get(self, url, retries=0):
         self.set_csrf_header()
-        async with self._session.get(url, headers=self._headers) as r:
-            result = await r.json()
+        await self.refresh_old_token()
+        try:
+            async with self._session.get(url, headers=self._headers) as r:
+                result = await r.json()
+        except Exception as e:
+            debug("EXCEPTION: " + str(type(e)))
+            if self.username is None:
+                await self.login_guest()
+            raise e
         self.monitor_rate_limit(r.headers)
-        if self.username is None and self.remaining < 10 or is_error(result, 88):
+        if self.username is None and self.remaining < 10 or is_error(result, 88) or is_error(result, 239):
             await self.login_guest()
         if retries > 0 and is_error(result, 353):
             return await self.get(url, retries - 1)
@@ -333,6 +365,10 @@ class TwitterSession:
         result = {"timestamp": time.time()}
         profile = {}
         profile_raw = await self.profile_raw(username)
+        debug(str(profile_raw))
+        if is_another_error(profile_raw, [50, 63]):
+            debug("Other error:" + str(username))
+            raise UnexpectedApiError
 
         try:
             user_id = str(profile_raw["data"]["user"]["rest_id"])
@@ -353,14 +389,10 @@ class TwitterSession:
             profile["protected"] = profile_raw["data"]["user"]["legacy"]["protected"]
         except KeyError:
             pass
-        try:
-            profile["exists"] = len([1 for error in profile_raw["errors"] if error["code"] == 50]) == 0
-        except KeyError:
-            profile["exists"] = True
-        try:
-            profile["suspended"] = len([1 for error in profile_raw["errors"] if error["code"] == 63]) > 0
-        except KeyError:
-            pass
+        profile["exists"] = not is_error(profile_raw, 50)
+        suspended = is_error(profile_raw, 63)
+        if suspended:
+            profile["suspended"] = suspended
         try:
             profile["has_tweets"] = int(profile_raw["data"]["user"]["legacy"]["statuses_count"]) > 0
         except KeyError:
