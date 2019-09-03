@@ -13,8 +13,6 @@ from aiohttp import web
 from bs4 import BeautifulSoup
 from db import connect
 
-twitter_auth_key = "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
-
 routes = web.RouteTableDef()
 
 class UnexpectedApiError(Exception):
@@ -53,6 +51,8 @@ def next_session():
 
 class TwitterSession:
     _user_url = "https://api.twitter.com/graphql/SEn6Mq-OakvVOT1CJqUO2A/UserByScreenName?variables="
+    twitter_auth_key = None
+
     def __init__(self):
         self._headers = {
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36"
@@ -83,7 +83,7 @@ class TwitterSession:
                 self._headers['X-Csrf-Token'] = cookie.value
 
     async def get_guest_token(self):
-        self._headers['Authorization'] = 'Bearer ' + twitter_auth_key
+        self._headers['Authorization'] = 'Bearer ' + self.twitter_auth_key
         async with self._session.post("https://api.twitter.com/1.1/guest/activate.json", headers=self._headers) as r:
             response = await r.json()
         guest_token = response.get("guest_token", None)
@@ -155,7 +155,7 @@ class TwitterSession:
             else:
                 async with self._session.get('https://twitter.com', headers=self._headers) as r:
                     await r.text()
-            
+
             self.set_csrf_header()
             self.username = username
 
@@ -165,7 +165,7 @@ class TwitterSession:
         else:
             await self.login_guest()
 
-        self._headers['Authorization'] = 'Bearer ' + twitter_auth_key
+        self._headers['Authorization'] = 'Bearer ' + self.twitter_auth_key
 
     async def get(self, url, retries=0):
         self.set_csrf_header()
@@ -326,7 +326,7 @@ class TwitterSession:
                 reference_session = next_session()
                 if reference_session is None:
                     return
-                
+
                 global account_index
                 account_index += 1
 
@@ -534,8 +534,10 @@ parser.add_argument('--port', type=int, default=8080, help='port which to listen
 parser.add_argument('--mongo-host', type=str, default='localhost', help='hostname or IP of mongoDB service to connect to')
 parser.add_argument('--mongo-port', type=int, default=27017, help='port of mongoDB service to connect to')
 parser.add_argument('--mongo-db', type=str, default='tester', help='name of mongo database to use')
+parser.add_argument('--twitter-auth-key', type=str, default=None, help='auth key for twitter guest session', required=True)
 args = parser.parse_args()
 
+TwitterSession.twitter_auth_key = args.twitter_auth_key;
 ensure_dir(args.cookie_dir)
 
 with open(args.account_file, "r") as f:

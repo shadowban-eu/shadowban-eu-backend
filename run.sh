@@ -23,4 +23,5 @@ python3 ./backend.py \
   --port "$PORT" \
   --mongo-host $MONGO_HOST \
   --mongo-port $MONGO_PORT \
-  --mongo-db $MONGO_DB
+  --mongo-db $MONGO_DB \
+  --twitter-auth-key $TWITTER_AUTH_KEY
