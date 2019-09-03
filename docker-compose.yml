@@ -1,0 +1,17 @@
+version: "3.5"
+services:
+  tester:
+    build: .
+    command: ["bash", "./docker-entry.sh"]
+    env_file: ${EXPECTED_ENV_FILE}
+    ports:
+      - "127.0.0.1:${PORT}:${PORT}"
+    volumes:
+      - .:/app
+    networks:
+      - mongodb
+
+networks:
+  mongodb:
+    external:
+      name: shadowban-eu_mongodb
