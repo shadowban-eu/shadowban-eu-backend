@@ -531,6 +531,7 @@ parser.add_argument('--log', type=str, default=None, help='log file where test r
 parser.add_argument('--daemon', action='store_true', help='run in background')
 parser.add_argument('--debug', type=str, default=None, help='debug log file')
 parser.add_argument('--port', type=int, default=8080, help='port which to listen on')
+parser.add_argument('--host', type=str, default='127.0.0.1', help='hostname/ip which to listen on')
 parser.add_argument('--mongo-host', type=str, default='localhost', help='hostname or IP of mongoDB service to connect to')
 parser.add_argument('--mongo-port', type=int, default=27017, help='port of mongoDB service to connect to')
 parser.add_argument('--mongo-db', type=str, default='tester', help='name of mongo database to use')
@@ -563,7 +564,7 @@ def run():
     loop.run_until_complete(login_guests())
     app = web.Application()
     app.add_routes(routes)
-    web.run_app(app, host='127.0.0.1', port=args.port)
+    web.run_app(app, host=args.host, port=args.port)
 
 if args.daemon:
     with daemon.DaemonContext():
