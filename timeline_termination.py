@@ -9,7 +9,7 @@ class TimelineTermination:
     async with TimelineTermination.session.get(TimelineTermination.endpoint + tweet_id) as response:
       result = await response.json()
 
-    if result["name"] == "APIError" and result["errors"][0]["code"] == "ENOREPLIES":
+    if result.get("name", None) == "APIError" and result["errors"][0]["code"] == "ENOREPLIES":
       result = None
 
     return result
