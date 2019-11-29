@@ -442,7 +442,7 @@ class TwitterSession:
 
         if result["tests"]["search"] != False:
             debug('Requesting TimelineTermination status for more_replies.tweet [' + result["tests"]["search"] + ']')
-            result["tests"]["timeline_termination"] = await TimelineTermination.requestTest(result["tests"]["search"])
+            result["tests"]["timeline_termination"] = await TimelineTermination.requestTest(result["tests"]["search"], debug)
 
         debug('Writing result for ' + result['profile']['screen_name'] + ' to DB')
         db.write_result(result)
