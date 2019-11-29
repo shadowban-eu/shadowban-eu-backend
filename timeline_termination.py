@@ -14,4 +14,7 @@ class TimelineTermination:
       debug('[TimelineTermination] ' + tweet_id + 'has no replies - can not test.')
       result = None
 
+    result["tweets"]["subject"] = result["tweets"]["subject"]["tweetId"]
+    result["tweets"]["testedWith"] = result["tweets"]["testedWith"]["tweetId"]
+
     return result
