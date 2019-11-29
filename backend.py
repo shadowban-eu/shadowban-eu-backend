@@ -325,6 +325,7 @@ class TwitterSession:
 
                 reference_session = next_session()
                 if reference_session is None:
+                    debug('No reference session')
                     return
 
                 global account_index
@@ -370,7 +371,7 @@ class TwitterSession:
         result = {"timestamp": time.time()}
         profile = {}
         profile_raw = await self.profile_raw(username)
-        debug(str(profile_raw))
+        debug('Testing ' + str(username))
         if is_another_error(profile_raw, [50, 63]):
             debug("Other error:" + str(username))
             raise UnexpectedApiError
