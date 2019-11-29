@@ -9,9 +9,11 @@ import traceback
 import urllib.parse
 import sys
 import time
+
 from aiohttp import web
 from bs4 import BeautifulSoup
 from db import connect
+from timeline_termination import TimelineTermination
 
 routes = web.RouteTableDef()
 
@@ -332,6 +334,7 @@ class TwitterSession:
                 account_index += 1
 
                 before_barrier = await reference_session.tweet_raw(replied_to_id, 1000)
+                debug(str(before_barrier))
                 if get_nested(before_barrier, ["globalObjects", "tweets"]) is None:
                     debug('notweets\n')
                     return
@@ -438,6 +441,10 @@ class TwitterSession:
         if more_replies_test and not get_nested(result, ["tests", "ghost", "ban"], False):
             result["tests"]["more_replies"] = await self.test_barrier(user_id)
 
+        if result["tests"]["search"] != False:
+            debug('Requesting TimelineTermination status for more_replies.tweet [' + result["tests"]["search"] + ']')
+            result["tests"]["timeline_termination"] = await TimelineTermination.requestTest(result["tests"]["search"])
+
         debug('Writing result for ' + result['profile']['screen_name'] + ' to DB')
         db.write_result(result)
         return result
@@ -537,9 +544,11 @@ parser.add_argument('--mongo-host', type=str, default='localhost', help='hostnam
 parser.add_argument('--mongo-port', type=int, default=27017, help='port of mongoDB service to connect to')
 parser.add_argument('--mongo-db', type=str, default='tester', help='name of mongo database to use')
 parser.add_argument('--twitter-auth-key', type=str, default=None, help='auth key for twitter guest session', required=True)
+parser.add_argument('--timeline-termination-endpoint', type=str, default=None, help='endpoint of TimelineTermination test service', required=True)
 args = parser.parse_args()
 
-TwitterSession.twitter_auth_key = args.twitter_auth_key;
+TwitterSession.twitter_auth_key = args.twitter_auth_key
+TimelineTermination.endpoint = args.timeline_termination_endpoint
 ensure_dir(args.cookie_dir)
 
 with open(args.account_file, "r") as f:
