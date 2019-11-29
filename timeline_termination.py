@@ -10,6 +10,8 @@ class TimelineTermination:
       result = await response.json()
 
     if result.get("name", None) == "APIError" and result["errors"][0]["code"] == "ENOREPLIES":
+      global debug
+      debug('[TimelineTermination] ' + tweet_id + 'has no replies - can not test.')
       result = None
 
     return result
