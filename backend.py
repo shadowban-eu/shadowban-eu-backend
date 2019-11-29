@@ -334,7 +334,6 @@ class TwitterSession:
                 account_index += 1
 
                 before_barrier = await reference_session.tweet_raw(replied_to_id, 1000)
-                debug(str(before_barrier))
                 if get_nested(before_barrier, ["globalObjects", "tweets"]) is None:
                     debug('notweets\n')
                     return
