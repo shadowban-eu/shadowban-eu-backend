@@ -442,13 +442,13 @@ class TwitterSession:
         if more_replies_test and not get_nested(result, ["tests", "ghost", "ban"], False):
             result["tests"]["more_replies"] = await self.test_barrier(user_id)
 
-        if result["tests"]["search"] != False:
-            try:
-                debug('[TimelineTermination] Requesting status for ' + result["tests"]["search"])
-                result["tests"]["timeline_termination"] = await TimelineTermination.requestTest(result["tests"]["search"], debug)
-            except Exception as e:
-                debug('[TimelineTermination] Request failed for ' + result["tests"]["search"])
-                debug(e)
+        # if result["tests"]["search"] != False:
+        #     try:
+        #         debug('[TimelineTermination] Requesting status for ' + result["tests"]["search"])
+        #         result["tests"]["timeline_termination"] = await TimelineTermination.requestTest(result["tests"]["search"], debug)
+        #     except Exception as e:
+        #         debug('[TimelineTermination] Request failed for ' + result["tests"]["search"])
+        #         debug(e)
 
         debug('Writing result for ' + result['profile']['screen_name'] + ' to DB')
         db.write_result(result)
