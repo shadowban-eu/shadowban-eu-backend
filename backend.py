@@ -443,8 +443,12 @@ class TwitterSession:
             result["tests"]["more_replies"] = await self.test_barrier(user_id)
 
         if result["tests"]["search"] != False:
-            debug('Requesting TimelineTermination status for more_replies.tweet [' + result["tests"]["search"] + ']')
-            result["tests"]["timeline_termination"] = await TimelineTermination.requestTest(result["tests"]["search"], debug)
+            try:
+                debug('[TimelineTermination] Requesting status for ' + result["tests"]["search"])
+                result["tests"]["timeline_termination"] = await TimelineTermination.requestTest(result["tests"]["search"], debug)
+            except Exception as e:
+                debug('[TimelineTermination] Request failed for ' + result["tests"]["search"])
+                debug(e)
 
         debug('Writing result for ' + result['profile']['screen_name'] + ' to DB')
         db.write_result(result)
