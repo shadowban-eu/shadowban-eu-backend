@@ -91,6 +91,8 @@ class TwitterSession:
         guest_token = response.get("guest_token", None)
         if guest_token is None:
             debug("Failed to fetch guest token")
+            debug(str(response))
+            debug(str(self._headers))
         return guest_token
 
     async def renew_session(self):
@@ -100,7 +102,7 @@ class TwitterSession:
     async def refresh_old_token(self):
         if self.username is not None or self.next_refresh is None or time.time() < self.next_refresh:
             return
-        debug("Refresh token: " + str(self._guest_token))
+        debug("Refreshing token: " + str(self._guest_token))
         await self.login_guest()
         debug("New token: " + str(self._guest_token))
 
