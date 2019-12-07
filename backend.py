@@ -128,7 +128,6 @@ class TwitterSession:
             self.next_refresh = time.time() + 3600
         self._headers['X-Guest-Token'] = self._guest_token
 
-
     async def login(self, username = None, password = None, email = None, cookie_dir=None):
         self._session = aiohttp.ClientSession()
 
@@ -297,7 +296,7 @@ class TwitterSession:
             tweets_replies = await self.get_profile_tweets_raw(user_id)
             tweet_ids = self.get_ordered_tweet_ids(tweets_replies)
 
-            filtered_ids = []
+            reply_tweet_ids = []
 
             for tid in tweet_ids:
                 if "in_reply_to_status_id_str" not in tweets_replies["globalObjects"]["tweets"][tid] or tweets_replies["globalObjects"]["tweets"][tid]["user_id_str"] != user_id:
@@ -306,11 +305,13 @@ class TwitterSession:
                 conversation_tweet = get_nested(tweets_replies, ["globalObjects", "tweets", tweet["conversation_id_str"]])
                 if conversation_tweet is not None and conversation_tweet.get("user_id_str") == user_id:
                     continue
-                filtered_ids.append(tid)
+                reply_tweet_ids.append(tid)
 
-            # debug('Filtered ids for user ' + user_id + ': ' +  str(filtered_ids) + '\n\n\n')
+            # return error message, when user has not made any reply tweets
+            if not reply_tweet_ids:
+                return {"error": "ENOREPLIES"}
 
-            for tid in filtered_ids:
+            for tid in reply_tweet_ids:
                 replied_to_id = tweets_replies["globalObjects"]["tweets"][tid].get("in_reply_to_status_id_str", None)
                 if replied_to_id is None:
                     continue
