@@ -56,10 +56,6 @@ class TwitterSession:
     twitter_auth_key = None
 
     def __init__(self):
-        self._headers = {
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36"
-        }
-        # without token, shit be broken; or something
         self._guest_token = None
         self._csrf_token = None
 
@@ -78,6 +74,9 @@ class TwitterSession:
         # this stays `None` for guest sessions
         self.username = None
 
+        # sets self._headers
+        self.reset_headers()
+
     def set_csrf_header(self):
         cookies = self._session.cookie_jar.filter_cookies('https://twitter.com/')
         for key, cookie in cookies.items():
@@ -95,9 +94,15 @@ class TwitterSession:
             debug(str(self._headers))
         return guest_token
 
+    def reset_headers(self):
+        self._headers = {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36"
+        }
+
     async def renew_session(self):
         await self.try_close()
         self._session = aiohttp.ClientSession()
+        self.reset_headers()
 
     async def refresh_old_token(self):
         if self.username is not None or self.next_refresh is None or time.time() < self.next_refresh:
