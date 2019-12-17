@@ -74,6 +74,9 @@ class TwitterSession:
         # this stays `None` for guest sessions
         self.username = None
 
+        self._headers = {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.100 Safari/537.36"
+        }
         # sets self._headers
         self.reset_headers()
 
@@ -455,6 +458,7 @@ class TwitterSession:
         #     except Exception as e:
         #         debug('[TimelineTermination] Request failed for ' + result["tests"]["search"])
         #         debug(e)
+
 
         debug('Writing result for ' + result['profile']['screen_name'] + ' to DB')
         db.write_result(result)
