@@ -448,8 +448,8 @@ class TwitterSession:
         else:
             result["tests"]["ghost"] = {"ban": False}
 
-        # if more_replies_test and not get_nested(result, ["tests", "ghost", "ban"], False):
-        #     result["tests"]["more_replies"] = await self.test_barrier(user_id)
+        if more_replies_test and not get_nested(result, ["tests", "ghost", "ban"], False):
+            result["tests"]["more_replies"] = await self.test_barrier(user_id)
 
         # if result["tests"]["search"] != False:
         #     try:
