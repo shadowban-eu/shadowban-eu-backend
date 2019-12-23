@@ -208,8 +208,7 @@ class TwitterSession:
         return await self.get("https://api.twitter.com/1.1/search/typeahead.json?src=search_box&result_type=users&q=" + urllib.parse.quote(query))
 
     async def profile_raw(self, username):
-        obj = json.dumps({"screen_name": username, "withHighlightedLabel": True})
-        return await self.get(self._user_url + urllib.parse.quote(obj))
+        return await self.get("https://api.twitter.com/1.1/users/show.json?screen_name=" + urllib.parse.quote(username))
 
     async def get_profile_tweets_raw(self, user_id):
         return await self.get("https://api.twitter.com/2/timeline/profile/" + str(user_id) +".json?include_tweet_replies=1&include_want_retweets=0&include_reply_count=1&count=1000")
@@ -390,22 +389,22 @@ class TwitterSession:
             raise UnexpectedApiError
 
         try:
-            user_id = str(profile_raw["data"]["user"]["rest_id"])
+            user_id = str(profile_raw["id"])
         except KeyError:
             user_id = None
 
         try:
-            profile["screen_name"] = profile_raw["data"]["user"]["legacy"]["screen_name"]
+            profile["screen_name"] = profile_raw["screen_name"]
         except KeyError:
             profile["screen_name"] = username
         try:
-            profile["restriction"] = profile_raw["data"]["user"]["legacy"]["profile_interstitial_type"]
+            profile["restriction"] = profile_raw["profile_interstitial_type"]
         except KeyError:
             pass
         if profile.get("restriction", None) == "":
             del profile["restriction"]
         try:
-            profile["protected"] = profile_raw["data"]["user"]["legacy"]["protected"]
+            profile["protected"] = profile_raw["protected"]
         except KeyError:
             pass
         profile["exists"] = not is_error(profile_raw, 50)
@@ -413,7 +412,7 @@ class TwitterSession:
         if suspended:
             profile["suspended"] = suspended
         try:
-            profile["has_tweets"] = int(profile_raw["data"]["user"]["legacy"]["statuses_count"]) > 0
+            profile["has_tweets"] = int(profile_raw["statuses_count"]) > 0
         except KeyError:
             profile["has_tweets"] = False
 
