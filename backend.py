@@ -52,7 +52,6 @@ def next_session():
         return sessions[0]
 
 class TwitterSession:
-    _user_url = "https://api.twitter.com/graphql/SEn6Mq-OakvVOT1CJqUO2A/UserByScreenName?variables="
     twitter_auth_key = None
 
     def __init__(self):
@@ -336,6 +335,7 @@ class TwitterSession:
                 debug('In reply to:' + replied_to_id + '\n')
 
                 reference_session = next_session()
+                reference_session = self
                 if reference_session is None:
                     debug('No reference session')
                     return
