@@ -512,8 +512,8 @@ async def api(request):
     test_index += 1
     result = await session.test(screen_name)
     log(json.dumps(result) + '\n')
-    if (args.unsafe_cors):
-        return web.json_response(result, headers={"Access-Control-Allow-Origin": "*"})
+    if (args.cors_allow is not None):
+        return web.json_response(result, headers={"Access-Control-Allow-Origin": args.cors_allow})
     else:
         return web.json_response(result)
 
@@ -551,16 +551,15 @@ parser.add_argument('--mongo-host', type=str, default='localhost', help='hostnam
 parser.add_argument('--mongo-port', type=int, default=27017, help='port of mongoDB service to connect to')
 parser.add_argument('--mongo-db', type=str, default='tester', help='name of mongo database to use')
 parser.add_argument('--twitter-auth-key', type=str, default=None, help='auth key for twitter guest session', required=True)
-parser.add_argument('--unsafe-cors', action='store_true', help='Enable UNSAFE *-CORS on /screenName route')
+parser.add_argument('--cors-allow', type=str, default=None, help='value for Access-Control-Allow-Origin header')
 args = parser.parse_args()
 
 TwitterSession.twitter_auth_key = args.twitter_auth_key
 
-if (args.unsafe_cors):
-    debug("!! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !!")
-    debug("!! ALLOWING UNSAFE CORS REQUESTS FROM *")
-    debug("!! Do not do this in production!")
-    debug("!! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !! !!")
+if (args.cors_allow is None):
+    debug('[CORS] Running without CORS headers')
+else:
+    debug('[CORS] Allowing requests from: ' + args.cors_allow)
 
 ensure_dir(args.cookie_dir)
 
