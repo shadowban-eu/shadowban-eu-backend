@@ -13,7 +13,6 @@ import time
 from aiohttp import web
 from bs4 import BeautifulSoup
 from db import connect
-from timeline_termination import TimelineTermination
 
 routes = web.RouteTableDef()
 
@@ -291,14 +290,16 @@ class TwitterSession:
         except:
             debug('Unexpected Exception:')
             debug(traceback.format_exc())
+            return { "error": "EUNKNOWN" }
 
-    async def test_barrier(self, user_id):
+    async def test_barrier(self, user_id, screen_name):
         try:
             tweets_replies = await self.get_profile_tweets_raw(user_id)
             tweet_ids = self.get_ordered_tweet_ids(tweets_replies)
 
             reply_tweet_ids = []
 
+            debug(str(tweet_ids));
             for tid in tweet_ids:
                 if "in_reply_to_status_id_str" not in tweets_replies["globalObjects"]["tweets"][tid] or tweets_replies["globalObjects"]["tweets"][tid]["user_id_str"] != user_id:
                     continue
@@ -330,9 +331,9 @@ class TwitterSession:
                 if replied_tweet["reply_count"] > 500:
                     continue
 
-                debug('Tban: ')
-                debug('Found:' + tid + '\n')
-                debug('In reply to:' + replied_to_id + '\n')
+                debug('[' + screen_name + '] Barrier Test: ')
+                debug('[' + screen_name + '] Found:' + tid)
+                debug('[' + screen_name + '] In reply to:' + replied_to_id)
 
                 reference_session = next_session()
                 reference_session = self
@@ -374,12 +375,13 @@ class TwitterSession:
 
                 # happens when replied_to_id tweet has been deleted
                 debug('outer loop return\n')
-                return
+                return { "error": "EUNKNOWN" }
         except:
             debug('Unexpected Exception in test_barrier:\n')
             debug(traceback.format_exc())
+            return { "error": "EUNKNOWN" }
 
-    async def test(self, username, more_replies_test=True):
+    async def test(self, username):
         result = {"timestamp": time.time()}
         profile = {}
         profile_raw = await self.profile_raw(username)
@@ -447,19 +449,12 @@ class TwitterSession:
         else:
             result["tests"]["ghost"] = {"ban": False}
 
-        if more_replies_test and not get_nested(result, ["tests", "ghost", "ban"], False):
-            result["tests"]["more_replies"] = await self.test_barrier(user_id)
+        if not get_nested(result, ["tests", "ghost", "ban"], False):
+            result["tests"]["more_replies"] = await self.test_barrier(user_id, profile['screen_name'])
+        else:
+            result["tests"]["more_replies"] = { "error": "EISGHOSTED"}
 
-        # if result["tests"]["search"] != False:
-        #     try:
-        #         debug('[TimelineTermination] Requesting status for ' + result["tests"]["search"])
-        #         result["tests"]["timeline_termination"] = await TimelineTermination.requestTest(result["tests"]["search"], debug)
-        #     except Exception as e:
-        #         debug('[TimelineTermination] Request failed for ' + result["tests"]["search"])
-        #         debug(e)
-
-
-        debug('Writing result for ' + result['profile']['screen_name'] + ' to DB')
+        debug('[' + profile['screen_name'] + '] Writing result to DB')
         db.write_result(result)
         return result
 
@@ -522,7 +517,10 @@ async def api(request):
     test_index += 1
     result = await session.test(screen_name)
     log(json.dumps(result) + '\n')
-    return web.json_response(result)
+    if (args.cors_allow is not None):
+        return web.json_response(result, headers={"Access-Control-Allow-Origin": args.cors_allow})
+    else:
+        return web.json_response(result)
 
 async def login_accounts(accounts, cookie_dir=None):
     if cookie_dir is not None and not os.path.isdir(cookie_dir):
@@ -558,11 +556,16 @@ parser.add_argument('--mongo-host', type=str, default='localhost', help='hostnam
 parser.add_argument('--mongo-port', type=int, default=27017, help='port of mongoDB service to connect to')
 parser.add_argument('--mongo-db', type=str, default='tester', help='name of mongo database to use')
 parser.add_argument('--twitter-auth-key', type=str, default=None, help='auth key for twitter guest session', required=True)
-parser.add_argument('--timeline-termination-endpoint', type=str, default=None, help='endpoint of TimelineTermination test service', required=True)
+parser.add_argument('--cors-allow', type=str, default=None, help='value for Access-Control-Allow-Origin header')
 args = parser.parse_args()
 
 TwitterSession.twitter_auth_key = args.twitter_auth_key
-TimelineTermination.endpoint = args.timeline_termination_endpoint
+
+if (args.cors_allow is None):
+    debug('[CORS] Running without CORS headers')
+else:
+    debug('[CORS] Allowing requests from: ' + args.cors_allow)
+
 ensure_dir(args.cookie_dir)
 
 with open(args.account_file, "r") as f:

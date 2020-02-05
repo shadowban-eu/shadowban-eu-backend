@@ -55,3 +55,8 @@ node_modules
 .env.*
 !.env.example
 .ht*
+
+# starter scripts with possibly sensitive data
+dev.sh
+start.sh
+restart.sh
