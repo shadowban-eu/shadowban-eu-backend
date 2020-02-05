@@ -290,6 +290,7 @@ class TwitterSession:
         except:
             debug('Unexpected Exception:')
             debug(traceback.format_exc())
+            return { "error": "EUNKNOWN" }
 
     async def test_barrier(self, user_id, screen_name):
         try:
@@ -298,6 +299,7 @@ class TwitterSession:
 
             reply_tweet_ids = []
 
+            debug(str(tweet_ids));
             for tid in tweet_ids:
                 if "in_reply_to_status_id_str" not in tweets_replies["globalObjects"]["tweets"][tid] or tweets_replies["globalObjects"]["tweets"][tid]["user_id_str"] != user_id:
                     continue
@@ -373,12 +375,13 @@ class TwitterSession:
 
                 # happens when replied_to_id tweet has been deleted
                 debug('outer loop return\n')
-                return
+                return { "error": "EUNKNOWN" }
         except:
             debug('Unexpected Exception in test_barrier:\n')
             debug(traceback.format_exc())
+            return { "error": "EUNKNOWN" }
 
-    async def test(self, username, more_replies_test=True):
+    async def test(self, username):
         result = {"timestamp": time.time()}
         profile = {}
         profile_raw = await self.profile_raw(username)
@@ -446,8 +449,10 @@ class TwitterSession:
         else:
             result["tests"]["ghost"] = {"ban": False}
 
-        if more_replies_test and not get_nested(result, ["tests", "ghost", "ban"], False):
+        if not get_nested(result, ["tests", "ghost", "ban"], False):
             result["tests"]["more_replies"] = await self.test_barrier(user_id, profile['screen_name'])
+        else:
+            result["tests"]["more_replies"] = { "error": "EISGHOSTED"}
 
         debug('[' + profile['screen_name'] + '] Writing result to DB')
         db.write_result(result)
