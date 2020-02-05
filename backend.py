@@ -299,7 +299,6 @@ class TwitterSession:
 
             reply_tweet_ids = []
 
-            debug(str(tweet_ids));
             for tid in tweet_ids:
                 if "in_reply_to_status_id_str" not in tweets_replies["globalObjects"]["tweets"][tid] or tweets_replies["globalObjects"]["tweets"][tid]["user_id_str"] != user_id:
                     continue
