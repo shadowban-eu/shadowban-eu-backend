@@ -291,7 +291,7 @@ class TwitterSession:
             debug('Unexpected Exception:')
             debug(traceback.format_exc())
 
-    async def test_barrier(self, user_id):
+    async def test_barrier(self, user_id, screen_name):
         try:
             tweets_replies = await self.get_profile_tweets_raw(user_id)
             tweet_ids = self.get_ordered_tweet_ids(tweets_replies)
@@ -329,9 +329,9 @@ class TwitterSession:
                 if replied_tweet["reply_count"] > 500:
                     continue
 
-                debug('Tban: ')
-                debug('Found:' + tid + '\n')
-                debug('In reply to:' + replied_to_id + '\n')
+                debug('[' + screen_name + '] Barrier Test: ')
+                debug('[' + screen_name + '] Found:' + tid)
+                debug('[' + screen_name + '] In reply to:' + replied_to_id)
 
                 reference_session = next_session()
                 reference_session = self
@@ -447,9 +447,9 @@ class TwitterSession:
             result["tests"]["ghost"] = {"ban": False}
 
         if more_replies_test and not get_nested(result, ["tests", "ghost", "ban"], False):
-            result["tests"]["more_replies"] = await self.test_barrier(user_id)
+            result["tests"]["more_replies"] = await self.test_barrier(user_id, profile['screen_name'])
 
-        debug('Writing result for ' + result['profile']['screen_name'] + ' to DB')
+        debug('[' + profile['screen_name'] + '] Writing result to DB')
         db.write_result(result)
         return result
 
