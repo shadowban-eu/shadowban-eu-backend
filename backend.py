@@ -373,7 +373,7 @@ class TwitterSession:
                     last_result = after_barrier
 
                 # happens when replied_to_id tweet has been deleted
-                debug('outer loop return\n')
+                debug('[' + screen_name + '] outer loop return')
                 return { "error": "EUNKNOWN" }
         except:
             debug('Unexpected Exception in test_barrier:\n')
