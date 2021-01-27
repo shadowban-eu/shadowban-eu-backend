@@ -239,11 +239,12 @@ class TwitterSession:
         # rate limit reset
         if last_remaining < self.remaining and self.overshot > 0 and self.username is not None:
             log('[rate-limit] Reset detected for ' + self.username + '. Saving overshoot count...')
-            db.write_rate_limit({ 'screen_name': self.username, 'overshot': self.overshot })
+            if db is not None:
+               db.write_rate_limit({ 'screen_name': self.username, 'overshot': self.overshot })
             self.overshot = 0
 
         # count the requests that failed because of rate limiting
-        if self.remaining is 0:
+        if self.remaining == 0:
             log('[rate-limit] Limit hit by ' + str(self.username) + '.')
             self.overshot += 1
 
@@ -459,7 +460,8 @@ class TwitterSession:
             result["tests"]["more_replies"] = { "error": "EISGHOSTED"}
 
         debug('[' + profile['screen_name'] + '] Writing result to DB')
-        db.write_result(result)
+        if db is not None:
+            db.write_result(result)
         return result
 
 
@@ -527,6 +529,8 @@ async def api(request):
         return web.json_response(result)
 
 async def login_accounts(accounts, cookie_dir=None):
+    if accounts is None or len(accounts) == 0:
+        return
     if cookie_dir is not None and not os.path.isdir(cookie_dir):
         os.mkdir(cookie_dir, 0o700)
     coroutines = []
@@ -556,7 +560,7 @@ parser.add_argument('--daemon', action='store_true', help='run in background')
 parser.add_argument('--debug', type=str, default=None, help='debug log file')
 parser.add_argument('--port', type=int, default=8080, help='port which to listen on')
 parser.add_argument('--host', type=str, default='127.0.0.1', help='hostname/ip which to listen on')
-parser.add_argument('--mongo-host', type=str, default='localhost', help='hostname or IP of mongoDB service to connect to')
+parser.add_argument('--mongo-host', type=str, default=None, help='hostname or IP of mongoDB service to connect to')
 parser.add_argument('--mongo-port', type=int, default=27017, help='port of mongoDB service to connect to')
 parser.add_argument('--mongo-db', type=str, default='tester', help='name of mongo database to use')
 parser.add_argument('--twitter-auth-key', type=str, default=TWITTER_AUTH_KEY, help='auth key for twitter guest session')
@@ -570,10 +574,16 @@ if (args.cors_allow is None):
 else:
     debug('[CORS] Allowing requests from: ' + args.cors_allow)
 
-ensure_dir(args.cookie_dir)
 
-with open(args.account_file, "r") as f:
-    accounts = json.loads(f.read())
+accounts = []
+if args.account_file is None:
+    debug('No account file specified.')
+elif not os.path.exists(args.account_file):
+    debug('Account file does not exist')
+else:
+    ensure_dir(args.cookie_dir)
+    with open(args.account_file, "r") as f:
+        accounts = json.loads(f.read())
 
 if args.log is not None:
     print("Logging test results to %s" % args.log)
@@ -589,7 +599,9 @@ if args.debug is not None:
 
 def run():
     global db
-    db = connect(host=args.mongo_host, port=args.mongo_port)
+    db = None
+    if args.mongo_host is not None:
+        db = connect(host=args.mongo_host, port=args.mongo_port)
     loop = asyncio.get_event_loop()
     loop.run_until_complete(login_accounts(accounts, args.cookie_dir))
     loop.run_until_complete(login_guests())
