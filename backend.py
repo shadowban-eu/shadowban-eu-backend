@@ -14,6 +14,11 @@ from aiohttp import web
 from bs4 import BeautifulSoup
 from db import connect
 
+
+# This is a public value from the Twitter source code.
+TWITTER_AUTH_KEY = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA'
+
+
 routes = web.RouteTableDef()
 
 class UnexpectedApiError(Exception):
@@ -554,7 +559,7 @@ parser.add_argument('--host', type=str, default='127.0.0.1', help='hostname/ip w
 parser.add_argument('--mongo-host', type=str, default='localhost', help='hostname or IP of mongoDB service to connect to')
 parser.add_argument('--mongo-port', type=int, default=27017, help='port of mongoDB service to connect to')
 parser.add_argument('--mongo-db', type=str, default='tester', help='name of mongo database to use')
-parser.add_argument('--twitter-auth-key', type=str, default=None, help='auth key for twitter guest session', required=True)
+parser.add_argument('--twitter-auth-key', type=str, default=TWITTER_AUTH_KEY, help='auth key for twitter guest session')
 parser.add_argument('--cors-allow', type=str, default=None, help='value for Access-Control-Allow-Origin header')
 args = parser.parse_args()
 
